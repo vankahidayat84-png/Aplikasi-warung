@@ -1,0 +1,6 @@
+{
+  "name": "Catatan Warung",
+  "description": "Aplikasi pencatatan warung dan kasir sederhana offline untuk mengelola inventaris, transaksi, laba rugi, pengeluaran, hutang, dan laporan keuangan komprehensif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
