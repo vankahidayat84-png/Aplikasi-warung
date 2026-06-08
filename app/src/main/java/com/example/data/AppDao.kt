@@ -100,4 +100,16 @@ interface AppDao {
 
     @Query("DELETE FROM hutang")
     suspend fun clearHutang()
+
+    @Query("DELETE FROM transaksi WHERE tanggal >= :todayStart")
+    suspend fun clearTransaksiToday(todayStart: Long)
+
+    @Query("DELETE FROM transaksi_detail WHERE transaksiId IN (SELECT id FROM transaksi WHERE tanggal >= :todayStart)")
+    suspend fun clearTransaksiDetailToday(todayStart: Long)
+
+    @Query("DELETE FROM pengeluaran WHERE tanggal >= :todayStart")
+    suspend fun clearPengeluaranToday(todayStart: Long)
+
+    @Query("UPDATE barang SET stok = 0")
+    suspend fun resetAllStok()
 }

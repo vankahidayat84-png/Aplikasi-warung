@@ -82,6 +82,35 @@ class AppRepository(private val db: AppDatabase) {
 
     suspend fun deleteTransaksi(transaksi: Transaksi) = dao.deleteTransaksi(transaksi)
 
+    suspend fun clearDailyData(todayStart: Long) {
+        db.withTransaction {
+            dao.clearTransaksiDetailToday(todayStart)
+            dao.clearTransaksiToday(todayStart)
+            dao.clearPengeluaranToday(todayStart)
+        }
+    }
+
+    suspend fun resetAllStok() {
+        dao.resetAllStok()
+    }
+
+    suspend fun clearRiwayatPenjualan() {
+        db.withTransaction {
+            dao.clearTransaksiDetail()
+            dao.clearTransaksi()
+        }
+    }
+
+    suspend fun clearSemuaData() {
+        db.withTransaction {
+            dao.clearBarang()
+            dao.clearTransaksi()
+            dao.clearTransaksiDetail()
+            dao.clearPengeluaran()
+            dao.clearHutang()
+        }
+    }
+
     // === Pengeluaran ===
     suspend fun insertPengeluaran(pengeluaran: Pengeluaran) = dao.insertPengeluaran(pengeluaran)
     suspend fun updatePengeluaran(pengeluaran: Pengeluaran) = dao.updatePengeluaran(pengeluaran)

@@ -1,5 +1,6 @@
 package com.example.ui
-
+import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -81,6 +82,7 @@ fun WarungApp(viewModel: WarungViewModel) {
                                 is Screen.Hutang -> "Catatan Hutang"
                                 is Screen.Statistik -> "Statistik Warung"
                                 is Screen.Pengaturan -> "Pengaturan Aplikasi"
+                                is Screen.ManajemenData -> "Manajemen Data"
                                 else -> "Catatan Warung"
                             },
                             fontWeight = FontWeight.Bold,
@@ -120,6 +122,7 @@ fun WarungApp(viewModel: WarungViewModel) {
                 is Screen.Hutang -> HutangScreen(viewModel)
                 is Screen.Statistik -> StatistikScreen(viewModel)
                 is Screen.Pengaturan -> PengaturanScreen(viewModel)
+                is Screen.ManajemenData -> ManajemenDataScreen(viewModel)
             }
         }
     }
@@ -2793,6 +2796,47 @@ fun PengaturanScreen(viewModel: WarungViewModel) {
             }
         }
 
+        // Manajemen Data Entry Card Menu
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.navigateTo(Screen.ManajemenData) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🛠️ Manajemen Data",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Reset harian, hapus stok, riwayat penjualan, ekspor & impor data.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Buka",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
         // Backup Data Offline
         item {
             Card(
@@ -2943,6 +2987,589 @@ fun PengaturanScreen(viewModel: WarungViewModel) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ManajemenDataScreen(viewModel: WarungViewModel) {
+    val isDark = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+
+    // Dialog state
+    var showResetHarian by remember { mutableStateOf(false) }
+    var showResetStok by remember { mutableStateOf(false) }
+    var showResetRiwayat by remember { mutableStateOf(false) }
+    var showResetSemua by remember { mutableStateOf(false) }
+    var resetKeywordInput by remember { mutableStateOf("") }
+
+    // Backup/Restore helper status
+    var lastSavedPath by remember { mutableStateOf("") }
+    var showBackupSuccessDialog by remember { mutableStateOf(false) }
+    var inputRestoreText by remember { mutableStateOf("") }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Warning or intro card about data operations
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDark) Color(0xFF1E1111) else Color(0xFFFEF2F2)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF991B1B).copy(alpha = 0.4f) else Color(0xFFFCA5A5))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⚠️",
+                        fontSize = 28.sp,
+                        modifier = Modifier.padding(end = 12.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Halaman Proteksi Data",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = if (isDark) Color(0xFFFCA5A5) else Color(0xFF991B1B)
+                        )
+                        Text(
+                            text = "Operasi di bawah ini bersifat permanen. Harap lakukan backup sebelum melakukan pembersihan data.",
+                            fontSize = 11.sp,
+                            color = if (isDark) Color(0xFFFFCDCD) else Color(0xFF7F1D1D),
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Title: Penghapusan Data
+        item {
+            Text(
+                text = "Pembersihan & Reset Data",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isDark) NaturalGreenPrimaryDark else Color(0xFF047857),
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+            )
+        }
+
+        // 1. Reset Data Harian
+        item {
+            ManagementActionCard(
+                title = "Reset Data Harian",
+                description = "Menghapus laba harian, omzet harian, dan statistik transaksi hari ini. Stok barang aman tidak terpengaruh.",
+                icon = Icons.Default.Refresh,
+                iconColor = if (isDark) NaturalGreenPrimaryDark else Color(0xFF059669),
+                isDark = isDark,
+                onClick = { showResetHarian = true }
+            )
+        }
+
+        // 2. Reset Stok Barang
+        item {
+            ManagementActionCard(
+                title = "Reset Stok Barang",
+                description = "Mengatur ulang semua stok produk di katalog Anda menjadi 0 secara instan. Nama produk tetap tersimpan.",
+                icon = Icons.Default.List,
+                iconColor = if (isDark) Color(0xFFFCD34D) else Color(0xFFD97706),
+                isDark = isDark,
+                onClick = { showResetStok = true }
+            )
+        }
+
+        // 3. Reset Riwayat Penjualan
+        item {
+            ManagementActionCard(
+                title = "Reset Riwayat Penjualan",
+                description = "Menghapus seluruh transaksi, subtotal belanja, dan laporan keuangan dalam database secara permanen.",
+                icon = Icons.Default.DateRange,
+                iconColor = if (isDark) Color(0xFF34D399) else Color(0xFF10B981),
+                isDark = isDark,
+                onClick = { showResetRiwayat = true }
+            )
+        }
+
+        // 4. Reset Semua Data (Extreme Red Accent)
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        resetKeywordInput = ""
+                        showResetSemua = true
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDark) Color(0xFF180A0A) else Color(0xFFFFF5F5)
+                ),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF6B1D1D) else Color(0xFFFEE2E2))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF451A1A) else Color(0xFFFEE2E2)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 14.dp)
+                    ) {
+                        Text(
+                            text = "Reset Semua Data",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (isDark) Color(0xFFF87171) else Color(0xFFB91C1C)
+                        )
+                        Text(
+                            text = "Hapus total produk, semua modal/jual, transaksi, biaya, hutang, dan semua preferensi sistem.",
+                            fontSize = 11.sp,
+                            color = if (isDark) Color(0xFFFFB3B3) else Color(0xFF991B1B)
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = if (isDark) Color(0xFFF87171).copy(alpha = 0.5f) else Color(0xFFDC2626).copy(alpha = 0.5f)
+                    )
+                }
+            }
+        }
+
+        // Title: Backup & Restore
+        item {
+            Text(
+                text = "Pencadangan & Pemulihan (Backup)",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isDark) NaturalGreenPrimaryDark else Color(0xFF047857),
+                modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+            )
+        }
+
+        // 5. Backup Data Offline
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, if (isDark) NaturalGreenPrimaryDark.copy(alpha = 0.15f) else Color(0xFFECFDF5))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "💾 Kemas Cadangan (Backup Data)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isDark) NaturalGreenPrimaryDark else Color(0xFF047857)
+                    )
+                    Text(
+                        text = "Simpan data warung secara lokal ke file JSON aman di memori HP Anda. Proteksi data 100% offline tanpa internet.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.backupToLocalFile { path ->
+                                lastSavedPath = path
+                                showBackupSuccessDialog = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) NaturalGreenPrimaryDark else Color(0xFF059669),
+                            contentColor = if (isDark) Color.Black else Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Simpan File Backup Lokal", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // 6. Restore Data Offline & JSON Paste fallback
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, if (isDark) NaturalGreenPrimaryDark.copy(alpha = 0.15f) else Color(0xFFECFDF5))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "📂 Pemulihan Data (Restore)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isDark) NaturalGreenPrimaryDark else Color(0xFF047857)
+                    )
+                    Text(
+                        text = "Memuat kembali file cadangan JSON lokal yang tersimpan, atau silakan tempel kode teks backup Anda di bawah.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.restoreFromLocalFile { success, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0xFF1E3A24) else Color(0xFFECFDF5),
+                                contentColor = if (isDark) NaturalGreenPrimaryDark else Color(0xFF047857)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Muat File Backup", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text ?: ""
+                                if (clip.isNotEmpty()) {
+                                    inputRestoreText = clip
+                                    Toast.makeText(context, "Berhasil menempel teks dari clipboard!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Clipboard kosong!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Tempel Teks", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    OutlinedTextField(
+                        value = inputRestoreText,
+                        onValueChange = { inputRestoreText = it },
+                        placeholder = { Text("Masukkan kode backup JSON di sini...", fontSize = 11.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(82.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.triggerRestore(inputRestoreText) { success ->
+                                if (success) {
+                                    inputRestoreText = ""
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) NaturalGreenPrimaryDark else Color(0xFF059669),
+                            contentColor = if (isDark) Color.Black else Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = inputRestoreText.trim().isNotEmpty()
+                    ) {
+                        Text("Pulihkan via Teks", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Spacing bottom
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+
+    // --- Dialog 1: Reset Data Harian ---
+    if (showResetHarian) {
+        AlertDialog(
+            onDismissRequest = { showResetHarian = false },
+            title = { Text("Reset data hari ini?", fontWeight = FontWeight.Bold) },
+            text = { Text("Data transaksi dan statistik hari ini akan dihapus.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.resetDataHarian()
+                        showResetHarian = false
+                    }
+                ) {
+                    Text("RESET", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetHarian = false }) {
+                    Text("BATAL")
+                }
+            }
+        )
+    }
+
+    // --- Dialog 2: Reset Stok Barang ---
+    if (showResetStok) {
+        AlertDialog(
+            onDismissRequest = { showResetStok = false },
+            title = { Text("Yakin ingin menghapus seluruh stok?", fontWeight = FontWeight.Bold) },
+            text = { Text("Tindakan ini tidak dapat dibatalkan.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.resetStokBarang()
+                        showResetStok = false
+                    }
+                ) {
+                    Text("RESET STOK", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetStok = false }) {
+                    Text("BATAL")
+                }
+            }
+        )
+    }
+
+    // --- Dialog 3: Reset Riwayat Penjualan ---
+    if (showResetRiwayat) {
+        AlertDialog(
+            onDismissRequest = { showResetRiwayat = false },
+            title = { Text("Reset riwayat penjualan?", fontWeight = FontWeight.Bold) },
+            text = { Text("Seluruh catatan transaksi penjualan akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.resetRiwayatPenjualan()
+                        showResetRiwayat = false
+                    }
+                ) {
+                    Text("RESET RIWAYAT", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetRiwayat = false }) {
+                    Text("BATAL")
+                }
+            }
+        )
+    }
+
+    // --- Dialog 4: Reset Semua Data (Extreme Proteksi) ---
+    if (showResetSemua) {
+        AlertDialog(
+            onDismissRequest = { showResetSemua = false },
+            title = { Text("⚠️ RESET SELURUH APLIKASI", fontWeight = FontWeight.Bold, color = Color.Red) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Operasi ini akan menghapus seluruh produk, penjualan, biaya, hutang, dan mengembalikan setelan aplikasi Anda ke kondisi awal pabrik.")
+                    Text("Untuk melanjutkan, silakan ketik kata \"RESET\" pada kolom di bawah ini:")
+                    OutlinedTextField(
+                        value = resetKeywordInput,
+                        onValueChange = { resetKeywordInput = it },
+                        placeholder = { Text("Ketik RESET di sini") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (resetKeywordInput == "RESET") {
+                            viewModel.resetSemuaData()
+                            showResetSemua = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) Color(0xFF7F1D1D) else Color(0xFF991B1B), // Dark Red
+                        contentColor = Color.White
+                    ),
+                    enabled = (resetKeywordInput == "RESET"),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Pembersihan Total", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetSemua = false }) {
+                    Text("BATAL")
+                }
+            }
+        )
+    }
+
+    // --- Dialog 5: Backup Saved Success Alert with Share ---
+    if (showBackupSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupSuccessDialog = false },
+            title = { Text("💾 Cadangan Berhasil!", fontWeight = FontWeight.Bold, color = if (isDark) NaturalGreenPrimaryDark else Color(0xFF047857)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Data Anda tersimpan dengan aman ke file lokal HP Anda:")
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = lastSavedPath,
+                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Text("Anda juga dapat membagikan (share) teks kode cadangan ini ke penyimpanan cloud Anda.")
+                }
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { showBackupSuccessDialog = false }) {
+                        Text("OK")
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = {
+                            showBackupSuccessDialog = false
+                            scope.launch {
+                                val json = viewModel.backupJsonString.value.ifEmpty {
+                                    ""
+                                }
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Backup Database Catatan Warung")
+                                    putExtra(Intent.EXTRA_TEXT, json)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Simpan / Kirim Backup via"))
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) NaturalGreenPrimaryDark else Color(0xFF059669),
+                            contentColor = if (isDark) Color.Black else Color.White
+                        )
+                    ) {
+                        Text("Bagikan Backup")
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun ManagementActionCard(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    isDark: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isDark) NaturalGreenPrimaryDark.copy(alpha = 0.12f) else Color(0xFFECFDF5)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isDark) {
+                            iconColor.copy(alpha = 0.15f)
+                        } else {
+                            iconColor.copy(alpha = 0.1f)
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+            )
         }
     }
 }

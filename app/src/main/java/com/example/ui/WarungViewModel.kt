@@ -23,6 +23,7 @@ sealed class Screen {
     object Hutang : Screen()
     object Statistik : Screen()
     object Pengaturan : Screen()
+    object ManajemenData : Screen()
 }
 
 class WarungViewModel(application: Application) : AndroidViewModel(application) {
@@ -379,6 +380,79 @@ class WarungViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 Toast.makeText(getApplication(), "Gagal memulihkan! Format berkas tidak cocok.", Toast.LENGTH_LONG).show()
                 onCompleted(false)
+            }
+        }
+    }
+
+    // === Management Data (Reset Operations) ===
+    fun resetDataHarian() {
+        viewModelScope.launch {
+            val startToday = getStartOfToday()
+            repository.clearDailyData(startToday)
+            Toast.makeText(getApplication(), "Laba, Omzet, dan Transaksi hari ini berhasil direset!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun resetStokBarang() {
+        viewModelScope.launch {
+            repository.resetAllStok()
+            Toast.makeText(getApplication(), "Seluruh stok produk berhasil direset ke 0!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun resetRiwayatPenjualan() {
+        viewModelScope.launch {
+            repository.clearRiwayatPenjualan()
+            Toast.makeText(getApplication(), "Seluruh riwayat transaksi & laporan penjualan berhasil dihapus!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun resetSemuaData() {
+        viewModelScope.launch {
+            repository.clearSemuaData()
+            prefs.edit().clear().apply()
+            _warungName.value = "Warung Saya"
+            _darkThemeEnabled.value = false
+            Toast.makeText(getApplication(), "Seluruh data aplikasi telah berhasil dibersihkan total!", Toast.LENGTH_LONG).show()
+            _navigationStack.value = listOf(Screen.HomeMenu)
+        }
+    }
+
+    // File-based Backup & Restore
+    fun backupToLocalFile(onFileSaved: (String) -> Unit) {
+        viewModelScope.launch {
+            val json = repository.exportBackupJson()
+            try {
+                val file = getApplication<Application>().getExternalFilesDir(null)?.resolve("warung_saya_backup.json")
+                if (file != null) {
+                    file.writeText(json)
+                    onFileSaved(file.absolutePath)
+                } else {
+                    Toast.makeText(getApplication(), "Gagal mengakses folder penyimpanan lokal!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(getApplication(), "Gagal menyimpan file: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun restoreFromLocalFile(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val file = getApplication<Application>().getExternalFilesDir(null)?.resolve("warung_saya_backup.json")
+                if (file != null && file.exists()) {
+                    val json = file.readText()
+                    val success = repository.restoreBackupJson(json)
+                    if (success) {
+                        onResult(true, "Berhasil memulihkan data dari file backup lokal!")
+                    } else {
+                        onResult(false, "Format file cadangan tidak cocok / korup.")
+                    }
+                } else {
+                    onResult(false, "Tidak ditemukan file backup lokal 'warung_saya_backup.json' di penyimpanan.")
+                }
+            } catch (e: Exception) {
+                onResult(false, "Error: ${e.message}")
             }
         }
     }
